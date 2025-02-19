@@ -1,0 +1,99 @@
+function main() {
+    // initial user query
+    let userQuery = getUserQuery();
+
+    // LLM tool call to generate dynamic search params/keywords to be searched.
+
+    let dynamicParams = llmGenerateDynamicParams(userQuery);
+    
+    // search with dynamic params
+    let aggResult = processDynamicQuery(
+        dynamicParams.searchQuery,
+        dynamicParams.extractionInstructions,
+        dynamicParams.aggMethod
+    );
+
+    console.log(aggResult);
+}
+
+function llmGenerateDynamicParams(query) {
+
+    let prompt = `user query: "${query}" generate a JSON object with the following fields: ` +
+                 `searchQuery (a Gmail search query string that returns relevant emails), ` +
+                 `extractionInstructions (instructions for extracting the needed information from each email's content), ` +
+                 `and aggMethod (for example 'sum' for numerical totals or 'list' for a collection of items).`;
+
+    let llmRes = callLLM(prompt);
+    let dynamicParams = parseJSON(llmRes);          \\ getting the object response
+    return dynamicParams;
+}
+
+function processDynamicQuery(searchQuery, extractionInstructions, aggMethod) {
+    let aggResult = initAggregation(aggMethod);
+
+    while (true) {
+        let response = gmailSearch(searchQuery);
+
+        for (let message of response.messages) {
+            let emailContent = gmailGetMessageContent(message.id);
+
+            // LLM will extract information based on dynamic instructions.
+
+            let extractedInfo = llmExtractInfo(emailContent, extractionInstructions);
+
+            aggResult = aggregate(aggResult, extractedInfo, aggMethod);
+        }
+    }
+
+    return aggResult;
+}
+
+function llmExtractInfo(emailContent, extractionInstructions) {
+
+    let prompt = `${extractionInstructions} Email Content:${emailContent}`;
+
+    // LLM to extract data based on instructions
+    
+    let llmRes = callLLM(prompt);
+    let extractedInfo = parseExtractedInfo(llmRes);
+    return extractedInfo;
+}
+
+function gmailSearch(query) {
+    let parameters = { q: query };
+
+    let response = apiCall(parameters);
+    return response;
+}
+
+function gmailGetMessageContent(messageId) {
+    let endpoint = `xyz`;
+    let emailResponse = apiCall(endpoint);
+    return emailResponse.body || emailResponse.snippet;
+}
+
+function initAggregation(aggMethod) {
+    if (aggMethod === "sum") {
+        return 0.0;
+    } else if (aggMethod === "list") {
+        return [];
+    }
+
+    //more methods can be added here:
+
+   else return null
+}
+
+function aggregate(currAggregate, newData, aggMethod) {
+
+    if (aggMethod === "sum") {
+        currAggregate += newData;
+
+    } else if (aggMethod === "list") {
+        currAggregate.push(newData);
+
+    } else {
+        currAggregate += newData;
+    }
+    return currAggregate;
+}

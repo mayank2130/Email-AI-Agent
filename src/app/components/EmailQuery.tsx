@@ -79,7 +79,7 @@ export default function EmailQuery({ token }: EmailQueryProps) {
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Sorry, I encountered an error while processing your request.",
+        content: `Sorry, I encountered an error while processing your request. ${error}`,
         type: "assistant",
         timestamp: new Date(),
       };
