@@ -13,6 +13,9 @@ const oauth2Client = new OAuth2Client({
   redirectUri: process.env.REDIRECT_URI,
 });
 
+// Track previous search queries to avoid repetition
+let previousQueries: Set<string> = new Set();
+
 /** 
  * AgentPlan represents the LLM's decision after each step.
  * - action: "search" instructs to perform a Gmail search with the provided query.
@@ -49,9 +52,9 @@ async function callAgentWithRetry(prompt: string, maxRetries = 3, forceFinal = f
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 150,
-        temperature: 0.5,
+        temperature: 0.7, // Slightly higher temperature for more variety
         system:
-          "You are an agent that reasons about how to search emails and answer user queries using external tools. You can search emails, refine searches, calculate sums from monetary values in emails, and provide final answers. Your output must be a valid JSON object with 'action' (must be one of 'search', 'refine', 'sum', or 'final') and appropriate fields for each action type.",
+          "You are an agent that reasons about how to search emails and answer user queries using external tools. You can search emails, refine searches, calculate sums from monetary values in emails, and provide final answers. Your output must be a valid JSON object with 'action' (must be one of 'search', 'refine', 'sum', or 'final') and appropriate fields for each action type. When searching, use different search terms in each iteration if previous searches didn't yield useful results.",
         messages: [
           {
             role: "user",
@@ -72,6 +75,18 @@ async function callAgentWithRetry(prompt: string, maxRetries = 3, forceFinal = f
       
       console.log("Agent raw response:", textBlock.text.trim());
       const plan = parseAgentResponse(textBlock.text.trim());
+      
+      // Check if this is a repeated search query and force a different one
+      if ((plan.action === "search" || plan.action === "refine") && plan.query) {
+        if (previousQueries.has(plan.query.toLowerCase())) {
+          console.log(`Query "${plan.query}" has been used before, requesting a different query`);
+          // Try again with a modified prompt that explicitly asks for a different query
+          return callAgentWithRetry(prompt + "\n\nIMPORTANT: You've already searched for this term. Please try a different search term or approach.", maxRetries - retries, forceFinal);
+        }
+        
+        // Add this query to the set of previous queries
+        previousQueries.add(plan.query.toLowerCase());
+      }
       
       // If forceFinal is true, override the agent's action to be "final"
       if (forceFinal && plan.action !== "final") {
@@ -140,9 +155,16 @@ function parseAgentResponse(responseText: string): AgentPlan {
 async function callAgent(
   userQuery: string,
   emailBatch?: string[],
-  forceFinal: boolean = false
+  forceFinal: boolean = false,
+  iteration: number = 1
 ): Promise<AgentPlan> {
   let context = `User Query: "${userQuery}"\n`;
+  
+  // Add information about previous search attempts
+  if (previousQueries.size > 0) {
+    context += `\nPrevious search terms: ${Array.from(previousQueries).join(", ")}\n`;
+  }
+  
   if (emailBatch && emailBatch.length > 0) {
     const emailsList = emailBatch
       .map((email, idx) => `Email #${idx + 1}:\n${email}`)
@@ -156,6 +178,14 @@ async function callAgent(
   if (forceFinal) {
     extraInstruction =
       "\nIMPORTANT: You must now provide a FINAL answer using the current email results. Do not ask for further search. Include the answer in the 'finalAnswer' field and set 'action' to 'final'.";
+  } else if (iteration > 1) {
+    extraInstruction = 
+      `\nThis is iteration ${iteration}. If previous searches didn't yield useful results, try different search terms, synonyms, or related concepts. For example:
+      - For "meeting": try "call", "appointment", "discussion", "sync", "conference", "zoom", "teams"
+      - For "receipt": try "invoice", "payment", "bill", "transaction", "order"
+      - For "travel": try "flight", "trip", "booking", "hotel", "reservation", "itinerary"
+      
+      Avoid repeating previous search terms. Be creative with alternatives.`;
   }
 
   const prompt = `
@@ -163,7 +193,7 @@ You are an intelligent email-search agent that uses external tools (Gmail search
 Based on the context provided, decide your next step by outputting a JSON object with the following keys:
 - "action": must be one of "search", "refine", "sum", or "final".
   • "search": if you need to search Gmail for more data, include a "query" field with a concise search term, ideally one or two words that capture the essence of the user's request. For example, if the user is looking for information about a "prime video subscription," you might use "prime."
-  • "refine": if the current results are insufficient, provide a more focused search query in the "query" field, also limited to one or two words. This could involve simplifying the query to key terms or company names, such as changing "zoom calls" to "zoom" or "recent flight" to "flight."
+  • "refine": if the current results are insufficient, provide a more focused search query in the "query" field, also limited to one or two words. This could involve using synonyms or related terms, such as trying "appointment" instead of "meeting" or "invoice" instead of "receipt".
   • "sum": if the user is asking about total spending or costs, use this action to calculate a sum from the emails. Include a "category" field describing what to sum (e.g., "flights", "subscriptions").
   • "final": if you have enough information, provide a final concise answer in the "finalAnswer" field.
 Do not include any extra text.
@@ -388,6 +418,9 @@ async function agentSolveQuery(userQuery: string, gmail: any): Promise<{ answer:
   let currentEmails: string[] | undefined = undefined;
   let allProcessedEmails: string[] = []; // Keep track of all emails we've seen
   
+  // Reset previous queries for this new user query
+  previousQueries = new Set();
+  
   console.log("Starting agent loop with query:", userQuery);
   
   let iterations = 0;
@@ -407,7 +440,8 @@ async function agentSolveQuery(userQuery: string, gmail: any): Promise<{ answer:
       currentEmails = allProcessedEmails.slice(0, 5); // Use up to 5 emails
     }
     
-    plan = await callAgent(userQuery, currentEmails, forceFinal);
+    // Pass the iteration number to callAgent
+    plan = await callAgent(userQuery, currentEmails, forceFinal, iterations + 1);
     console.log(`Iteration ${iterations + 1} - Current agent plan:`, plan);
 
     // Handle various response formats from the agent
