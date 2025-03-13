@@ -71,7 +71,7 @@ async function callAgentWithRetry(prompt: string, maxRetries = 3, forceFinal = f
       }
       
       console.log("Agent raw response:", textBlock.text.trim());
-      let plan = parseAgentResponse(textBlock.text.trim());
+      const plan = parseAgentResponse(textBlock.text.trim());
       
       // If forceFinal is true, override the agent's action to be "final"
       if (forceFinal && plan.action !== "final") {
@@ -342,7 +342,7 @@ function calculateSum(emails: string[], category: string): { total: number; curr
         currencyCounts[currency] = (currencyCounts[currency] || 0) + 1;
         
         // Extract and parse amount
-        let amount = match[1].replace(/,/g, '');
+        const amount = match[1].replace(/,/g, '');
         const parsedAmount = parseFloat(amount);
         
         if (!isNaN(parsedAmount)) {
