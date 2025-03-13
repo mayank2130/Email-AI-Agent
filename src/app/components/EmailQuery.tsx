@@ -2,12 +2,14 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send, User, Bot } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Message {
   id: string;
   content: string;
   type: "user" | "assistant";
   timestamp: Date;
+  emails?: string[];
 }
 
 interface EmailQueryProps {
@@ -15,6 +17,11 @@ interface EmailQueryProps {
     accessToken: string;
     refreshToken: string;
   };
+}
+
+interface QueryResponse {
+  answer: string;
+  emails?: string[];
 }
 
 export default function EmailQuery({ token }: EmailQueryProps) {
@@ -30,6 +37,9 @@ export default function EmailQuery({ token }: EmailQueryProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<QueryResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,9 +83,11 @@ export default function EmailQuery({ token }: EmailQueryProps) {
         content: data.answer,
         type: "assistant",
         timestamp: new Date(),
+        emails: data.emails,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      setResult(data);
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -84,13 +96,31 @@ export default function EmailQuery({ token }: EmailQueryProps) {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      setError(`Sorry, I encountered an error while processing your request. ${error}`);
     } finally {
       setLoading(false);
     }
   };
 
+  const EmailCard = ({ email }: { email: string }) => {
+    const lines = email.split('\n');
+    const from = lines.find(line => line.startsWith('From:'))?.substring(6) || 'Unknown';
+    const subject = lines.find(line => line.startsWith('Subject:'))?.substring(9) || 'No Subject';
+    const date = lines.find(line => line.startsWith('Date:'))?.substring(6) || '';
+    const content = lines.find(line => line.startsWith('Content:'))?.substring(9) || '';
+
+    return (
+      <div className="bg-white rounded-lg shadow p-4 border">
+        <div className="font-medium text-gray-800">{subject}</div>
+        <div className="text-sm text-gray-600">{from}</div>
+        <div className="text-xs text-gray-500 mb-2">{date}</div>
+        <div className="text-sm text-gray-700">{content}</div>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex flex-col  max-w-4xl mx-auto">
+    <div className="flex flex-col max-w-4xl mx-auto">
       <div className="bg-white border-b p-4">
         <h1 className="text-xl font-semibold">Email Assistant</h1>
       </div>
@@ -98,31 +128,48 @@ export default function EmailQuery({ token }: EmailQueryProps) {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex items-start space-x-2 ${
-              message.type === "user" ? "justify-end" : "justify-start"
+            className={`flex flex-col space-y-4 ${
+              message.type === "user" ? "items-end" : "items-start"
             }`}
           >
-            {message.type === "assistant" && (
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
-                <Bot size={20} />
-              </div>
-            )}
+            <div className="flex items-start space-x-2">
+              {message.type === "assistant" && (
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
+                  <Bot size={20} />
+                </div>
+              )}
 
-            <div
-              className={`max-w-[80%] rounded-lg p-4 ${
-                message.type === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white border"
-              }`}
-            >
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              <div
+                className={`max-w-[80%] rounded-lg p-4 ${
+                  message.type === "user"
+                    ? "bg-blue-500 text-white"
+                    : "bg-white border"
+                }`}
+              >
+                {message.emails && message.emails.length > 0 && (
+                  <div className="mb-4">
+                    <div className="font-medium mb-2">Relevant Emails:</div>
+                    <ScrollArea className="h-[300px] w-full pr-4">
+                      <div className="grid gap-4">
+                        {message.emails.map((email, index) => (
+                          <EmailCard key={index} email={email} />
+                        ))}
+                      </div>
+                    </ScrollArea>
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="font-medium mb-2">Summary:</div>
+                    </div>
+                  </div>
+                )}
+                <p className="whitespace-pre-wrap">{message.content}</p>
+              </div>
+
+              {message.type === "user" && (
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                  <User size={20} />
+                </div>
+              )}
             </div>
-
-            {message.type === "user" && (
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                <User size={20} />
-              </div>
-            )}
           </div>
         ))}
         {loading && (
@@ -163,6 +210,12 @@ export default function EmailQuery({ token }: EmailQueryProps) {
           </button>
         </div>
       </form>
+
+      {loading && <div className="text-center">Loading...</div>}
+      
+      {error && (
+        <div className="text-red-500 mb-4">{error}</div>
+      )}
     </div>
   );
 }
