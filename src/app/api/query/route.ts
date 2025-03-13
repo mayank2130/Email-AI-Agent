@@ -180,20 +180,20 @@ async function callAgent(
       "\nIMPORTANT: You must now provide a FINAL answer using the current email results. Do not ask for further search. Include the answer in the 'finalAnswer' field and set 'action' to 'final'.";
   } else if (iteration > 1) {
     extraInstruction = 
-      `\nThis is iteration ${iteration}. If previous searches didn't yield useful results, try different search terms, synonyms, or related concepts. For example:
-      - For "meeting": try "call", "appointment", "discussion", "sync", "conference", "zoom", "teams"
-      - For "receipt": try "invoice", "payment", "bill", "transaction", "order"
-      - For "travel": try "flight", "trip", "booking", "hotel", "reservation", "itinerary"
-      
-      Avoid repeating previous search terms. Be creative with alternatives.`;
+      `\nThis is iteration ${iteration}. If previous searches didn't yield useful results, try different search terms, synonyms, or related concepts. Use simple, direct terms that would appear in the emails.`;
   }
 
   const prompt = `
 You are an intelligent email-search agent that uses external tools (Gmail search) to answer a user's query.
 Based on the context provided, decide your next step by outputting a JSON object with the following keys:
 - "action": must be one of "search", "refine", "sum", or "final".
-  • "search": if you need to search Gmail for more data, include a "query" field with a concise search term, ideally one or two words that capture the essence of the user's request. For example, if the user is looking for information about a "prime video subscription," you might use "prime."
-  • "refine": if the current results are insufficient, provide a more focused search query in the "query" field, also limited to one or two words. This could involve using synonyms or related terms, such as trying "appointment" instead of "meeting" or "invoice" instead of "receipt".
+  • "search": if you need to search Gmail for more data, include a "query" field with a concise search term. Use the most direct, simple term that would appear in the emails. For example:
+    - For questions about calls or meetings, search for "call" or "meeting"
+    - For questions about flights, search for "flight" or "boarding"
+    - For questions about purchases, search for "receipt" or "order"
+    - Avoid making assumptions about specific services or brands unless mentioned in the query
+    - Use exactly the terms that would appear in the emails
+  • "refine": if the current results are insufficient, provide a more focused search query in the "query" field. Use simple alternatives that would appear directly in the emails.
   • "sum": if the user is asking about total spending or costs, use this action to calculate a sum from the emails. Include a "category" field describing what to sum (e.g., "flights", "subscriptions").
   • "final": if you have enough information, provide a final concise answer in the "finalAnswer" field.
 Do not include any extra text.

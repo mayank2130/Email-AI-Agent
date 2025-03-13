@@ -210,8 +210,6 @@ export default function EmailQuery({ token }: EmailQueryProps) {
           </button>
         </div>
       </form>
-
-      {loading && <div className="text-center">Loading...</div>}
       
       {error && (
         <div className="text-red-500 mb-4">{error}</div>
